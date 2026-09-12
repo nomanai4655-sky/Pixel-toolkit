@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Image Compressor — PixelToolkit</title>
+<meta name="description" content="Compress images right in your browser. Adjust quality, preview the result, and download — no uploads, no server." />
+
+<!-- Tailwind CDN -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          paper: '#F5F6F3',
+          ink: '#15161A',
+          muted: '#6B6F76',
+          line: '#E2E3DE',
+          brand: {
+            blue: '#3358FF',
+            orange: '#FF5A36',
+          },
+        },
+        fontFamily: {
+          display: ['"Space Grotesk"', 'ui-sans-serif', 'sans-serif'],
+          sans: ['Inter', 'ui-sans-serif', 'sans-serif'],
+        },
+      },
+    },
+  };
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+<style>
+  body { font-family: 'Inter', ui-sans-serif, sans-serif; }
+  .font-display { font-family: 'Space Grotesk', ui-sans-serif, sans-serif; }
+
+  /* Classic transparency checkerboard — used behind previews so size/quality changes are easy to judge */
+  .bg-checker {
+    background-color: #ffffff;
+    background-image:
+      linear-gradient(45deg, #e7e8e3 25%, transparent 25%),
+      linear-gradient(-45deg, #e7e8e3 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #e7e8e3 75%),
+      linear-gradient(-45deg, transparent 75%, #e7e8e3 75%);
+    background-size: 22px 22px;
+    background-position: 0 0, 0 11px, 11px -11px, -11px 0px;
+  }
+
+  .focus-ring:focus-visible {
+    outline: 2px solid #3358FF;
+    outline-offset: 2px;
+  }
+
+  input[type="range"]:focus-visible {
+    outline: 2px solid #3358FF;
+    outline-offset: 3px;
+  }
+
+  #drop-zone.drag-active {
+    border-color: #3358FF;
+    background-color: rgba(51, 88, 255, 0.05);
+  }
+
+  .spinner {
+    border: 2px solid #E2E3DE;
+    border-top-color: #3358FF;
+    border-radius: 9999px;
+    width: 14px;
+    height: 14px;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+
+<body class="bg-paper text-ink antialiased min-h-screen">
+
+  <!-- ================= HEADER ================= -->
+  <header class="sticky top-0 z-50 bg-paper/90 backdrop-blur border-b border-line">
+    <nav class="max-w-5xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
+      <a href="index.html" class="flex items-center gap-2.5 focus-ring rounded-md">
+        <span class="grid grid-cols-2 grid-rows-2 gap-[3px]" aria-hidden="true">
+          <span class="w-2.5 h-2.5 rounded-[2px] bg-brand-blue"></span>
+          <span class="w-2.5 h-2.5 rounded-[2px] bg-ink"></span>
+          <span class="w-2.5 h-2.5 rounded-[2px] bg-ink"></span>
+          <span class="w-2.5 h-2.5 rounded-[2px] bg-brand-orange"></span>
+        </span>
+        <span class="font-display font-semibold text-lg tracking-tight">PixelToolkit</span>
+      </a>
+
+      <a href="index.html" class="inline-flex items-center gap-1.5 rounded-lg border border-line text-sm font-medium px-4 py-2 hover:border-ink transition-colors focus-ring">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+        Back to home
+      </a>
+    </nav>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-5 sm:px-8 py-12 sm:py-16">
+
+    <!-- ================= TITLE ================= -->
+    <div class="max-w-xl">
+      <h1 class="font-display font-semibold text-3xl sm:text-4xl tracking-tight">Image Compressor</h1>
+      <p class="mt-3 text-muted leading-relaxed">Drop in an image, drag the quality slider, and download a smaller file. Everything happens on your device — nothing is uploaded anywhere.</p>
+    </div>
+
+    <!-- ================= ERROR ================= -->
+    <p id="error-msg" class="hidden mt-6 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-4 py-3"></p>
+
+    <!-- ================= UPLOAD ZONE ================= -->
+    <div
+      id="drop-zone"
+      tabindex="0"
+      role="button"
+      aria-label="Upload an image"
+      class="mt-8 rounded-2xl border-2 border-dashed border-line bg-white px-6 py-14 sm:py-20 text-center cursor-pointer transition-colors focus-ring"
+    >
+      <div class="mx-auto w-12 h-12 rounded-lg bg-brand-blue/10 flex items-center justify-center">
+        <svg class="w-5 h-5 text-brand-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>
+        </svg>
+      </div>
+      <p class="mt-4 font-medium">Drag &amp; drop an image, or click to browse</p>
+      <p class="mt-1 text-sm text-muted">JPG, PNG or WebP</p>
+      <input id="file-input" type="file" accept="image/*" class="hidden" />
+    </div>
+
+    <!-- ================= WORKSPACE ================= -->
+    <div id="workspace" class="hidden mt-8">
+
+      <!-- File name + change link -->
+      <div class="flex items-center justify-between gap-4">
+        <p class="text-sm text-muted truncate"><span id="file-name" class="text-ink font-medium"></span></p>
+        <button id="change-btn" class="shrink-0 text-sm font-medium text-ink hover:text-brand-blue focus-ring rounded-md">Change image</button>
+      </div>
+
+      <!-- Quality control -->
+      <div class="mt-6 rounded-xl border border-line bg-white p-5">
+        <div class="flex items-center justify-between">
+          <label for="quality-slider" class="text-sm font-semibold">Compression quality</label>
+          <span id="quality-value" class="font-display text-sm font-semibold text-brand-blue">80%</span>
+        </div>
+        <input
+          id="quality-slider"
+          type="range"
+          min="1"
+          max="100"
+          value="80"
+          class="w-full mt-3 accent-[#3358FF]"
+        />
+        <div class="flex items-center justify-between mt-1 text-xs text-muted">
+          <span>Smaller file</span>
+          <span>Higher quality</span>
+        </div>
+      </div>
+
+      <!-- Previews -->
+      <div class="mt-6 grid sm:grid-cols-2 gap-5">
+        <!-- Original -->
+        <div class="rounded-xl border border-line bg-white p-5">
+          <div class="flex items-center justify-between">
+            <h3 class="font-display font-semibold">Original</h3>
+            <span id="original-size" class="text-sm text-muted"></span>
+          </div>
+          <div class="mt-4 rounded-lg overflow-hidden bg-checker h-56 sm:h-64 flex items-center justify-center">
+            <img id="original-img" class="max-w-full max-h-full object-contain" alt="Original uploaded image" />
+          </div>
+        </div>
+
+        <!-- Compressed -->
+        <div class="rounded-xl border border-line bg-white p-5">
+          <div class="flex items-center justify-between">
+            <h3 class="font-display font-semibold flex items-center gap-2">
+              Compressed
+              <span id="status" class="hidden spinner" aria-label="Compressing"></span>
+            </h3>
+            <span class="flex items-center gap-2 text-sm">
+              <span id="compressed-size" class="text-muted"></span>
+              <span id="reduction-badge" class="font-semibold text-brand-blue"></span>
+            </span>
+          </div>
+          <div class="mt-4 rounded-lg overflow-hidden bg-checker h-56 sm:h-64 flex items-center justify-center">
+            <img id="compressed-img" class="max-w-full max-h-full object-contain" alt="Compressed preview" />
+          </div>
+        </div>
+      </div>
+
+      <p class="mt-3 text-xs text-muted">Compressed images are saved as JPEG. Transparent areas in PNGs will be filled with white.</p>
+
+      <!-- Download -->
+      <button
+        id="download-btn"
+        disabled
+        class="mt-6 w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-lg bg-brand-blue text-white text-sm font-semibold px-6 py-3 hover:bg-ink transition-colors focus-ring disabled:opacity-50 disabled:pointer-events-none"
+      >
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="M7 11l5 5 5-5"/><path d="M4 20h16"/></svg>
+        Download compressed image
+      </button>
+    </div>
+
+  </main>
+
+  <footer class="border-t border-line mt-10">
+    <div class="max-w-5xl mx-auto px-5 sm:px-8 py-8 text-center text-xs text-muted">
+      © 2026 PixelToolkit. All tools are free to use.
+    </div>
+  </footer>
+
+  <script>
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const workspace = document.getElementById('workspace');
+    const errorMsg = document.getElementById('error-msg');
+    const fileNameEl = document.getElementById('file-name');
+    const qualitySlider = document.getElementById('quality-slider');
+    const qualityValue = document.getElementById('quality-value');
+    const originalImg = document.getElementById('original-img');
+    const compressedImg = document.getElementById('compressed-img');
+    const originalSizeEl = document.getElementById('original-size');
+    const compressedSizeEl = document.getElementById('compressed-size');
+    const reductionBadge = document.getElementById('reduction-badge');
+    const statusEl = document.getElementById('status');
+    const downloadBtn = document.getElementById('download-btn');
+    const changeBtn = document.getElementById('change-btn');
+
+    let originalFile = null;
+    let originalObjectUrl = null;
+    let compressedObjectUrl = null;
+    let sourceImage = null;
+    let compressedBlob = null;
+    let debounceTimer = null;
+
+    function formatBytes(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    function showError(message) {
+      errorMsg.textContent = message;
+      errorMsg.classList.remove('hidden');
+    }
+
+    function clearError() {
+      errorMsg.classList.add('hidden');
+      errorMsg.textContent = '';
+    }
+
+    function resetWorkspace() {
+      workspace.classList.add('hidden');
+      dropZone.classList.remove('hidden');
+      fileInput.value = '';
+      if (originalObjectUrl) URL.revokeObjectURL(originalObjectUrl);
+      if (compressedObjectUrl) URL.revokeObjectURL(compressedObjectUrl);
+      originalFile = null;
+      originalObjectUrl = null;
+      compressedObjectUrl = null;
+      sourceImage = null;
+      compressedBlob = null;
+      downloadBtn.disabled = true;
+    }
+
+    function handleFile(file) {
+      clearError();
+
+      if (!file || !file.type.startsWith('image/')) {
+        showError('Please choose an image file (JPG, PNG, or WebP).');
+        return;
+      }
+
+      originalFile = file;
+      if (originalObjectUrl) URL.revokeObjectURL(originalObjectUrl);
+      originalObjectUrl = URL.createObjectURL(file);
+
+      const img = new Image();
+      img.onload = () => {
+        sourceImage = img;
+        originalImg.src = originalObjectUrl;
+        fileNameEl.textContent = file.name;
+        originalSizeEl.textContent = formatBytes(file.size);
+        dropZone.classList.add('hidden');
+        workspace.classList.remove('hidden');
+        compress();
+      };
+      img.onerror = () => {
+        showError('This image could not be read. Try a different file.');
+      };
+      img.src = originalObjectUrl;
+    }
+
+    function compress() {
+      if (!sourceImage || !originalFile) return;
+
+      statusEl.classList.remove('hidden');
+
+      const canvas = document.createElement('canvas');
+      canvas.width = sourceImage.naturalWidth;
+      canvas.height = sourceImage.naturalHeight;
+      const ctx = canvas.getContext('2d');
+
+      // Flatten any transparency onto white before JPEG encoding
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(sourceImage, 0, 0);
+
+      const quality = Number(qualitySlider.value) / 100;
+
+      canvas.toBlob((blob) => {
+        statusEl.classList.add('hidden');
+
+        if (!blob) {
+          showError('Compression failed. Try a different image or browser.');
+          downloadBtn.disabled = true;
+          return;
+        }
+
+        compressedBlob = blob;
+        if (compressedObjectUrl) URL.revokeObjectURL(compressedObjectUrl);
+        compressedObjectUrl = URL.createObjectURL(blob);
+        compressedImg.src = compressedObjectUrl;
+        compressedSizeEl.textContent = formatBytes(blob.size);
+
+        const reduction = Math.round((1 - blob.size / originalFile.size) * 100);
+        if (reduction >= 0) {
+          reductionBadge.textContent = '−' + reduction + '%';
+          reductionBadge.classList.remove('text-brand-orange');
+          reductionBadge.classList.add('text-brand-blue');
+        } else {
+          reductionBadge.textContent = '+' + Math.abs(reduction) + '%';
+          reductionBadge.classList.remove('text-brand-blue');
+          reductionBadge.classList.add('text-brand-orange');
+        }
+
+        downloadBtn.disabled = false;
+      }, 'image/jpeg', quality);
+    }
+
+    qualitySlider.addEventListener('input', () => {
+      qualityValue.textContent = qualitySlider.value + '%';
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(compress, 120);
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) handleFile(e.target.files[0]);
+    });
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        fileInput.click();
+      }
+    });
+
+    ['dragenter', 'dragover'].forEach((evt) => {
+      dropZone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        dropZone.classList.add('drag-active');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach((evt) => {
+      dropZone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-active');
+      });
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      const file = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) handleFile(file);
+    });
+
+    downloadBtn.addEventListener('click', () => {
+      if (!compressedBlob || !compressedObjectUrl) return;
+      const base = originalFile ? originalFile.name.replace(/\.[^/.]+$/, '') : 'image';
+      const a = document.createElement('a');
+      a.href = compressedObjectUrl;
+      a.download = base + '-compressed.jpg';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    });
+
+    changeBtn.addEventListener('click', resetWorkspace);
+  </script>
+
+</body>
+</html>
