@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Format Converter — PixelToolkit</title>
+<meta name="description" content="Convert images between JPG, PNG, WebP, and GIF right in your browser. No uploads, no server." />
+
+<!-- Tailwind CDN -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          paper: '#F5F6F3',
+          ink: '#15161A',
+          muted: '#6B6F76',
+          line: '#E2E3DE',
+          brand: {
+            blue: '#3358FF',
+            orange: '#FF5A36',
+          },
+        },
+        fontFamily: {
+          display: ['"Space Grotesk"', 'ui-sans-serif', 'sans-serif'],
+          sans: ['Inter', 'ui-sans-serif', 'sans-serif'],
+        },
+      },
+    },
+  };
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+<style>
+  body { font-family: 'Inter', ui-sans-serif, sans-serif; }
+  .font-display { font-family: 'Space Grotesk', ui-sans-serif, sans-serif; }
+
+  .bg-checker {
+    background-color: #ffffff;
+    background-image:
+      linear-gradient(45deg, #e7e8e3 25%, transparent 25%),
+      linear-gradient(-45deg, #e7e8e3 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #e7e8e3 75%),
+      linear-gradient(-45deg, transparent 75%, #e7e8e3 75%);
+    background-size: 22px 22px;
+    background-position: 0 0, 0 11px, 11px -11px, -11px 0px;
+  }
+
+  .focus-ring:focus-visible {
+    outline: 2px solid #3358FF;
+    outline-offset: 2px;
+  }
+
+  #drop-zone.drag-active {
+    border-color: #3358FF;
+    background-color: rgba(51, 88, 255, 0.05);
+  }
+
+  .format-btn {
+    border: 1px solid #E2E3DE;
+    color: #15161A;
+    background: #ffffff;
+    transition: border-color .15s ease, background-color .15s ease, color .15s ease;
+  }
+  .format-btn.active {
+    border-color: #3358FF;
+    background-color: #3358FF;
+    color: #ffffff;
+  }
+  .format-btn:disabled {
+    opacity: .4;
+    cursor: not-allowed;
+  }
+
+  .spinner {
+    border: 2px solid #E2E3DE;
+    border-top-color: #3358FF;
+    border-radius: 9999px;
+    width: 14px;
+    height: 14px;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+
+<body class="bg-paper text-ink antialiased min-h-screen">
+
+  <!-- ================= HEADER ================= -->
+  <header class="sticky top-0 z-50 bg-paper/90 backdrop-blur border-b border-line">
+    <nav class="max-w-5xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
+      <a href="index.html" class="flex items-center gap-2.5 focus-ring rounded-md">
+        <span class="grid grid-cols-2 grid-rows-2 gap-[3px]" aria-hidden="true">
+          <span class="w-2.5 h-2.5 rounded-[2px] bg-brand-blue"></span>
+          <span class="w-2.5 h-2.5 rounded-[2px] bg-ink"></span>
+          <span class="w-2.5 h-2.5 rounded-[2px] bg-ink"></span>
+          <span class="w-2.5 h-2.5 rounded-[2px] bg-brand-orange"></span>
+        </span>
+        <span class="font-display font-semibold text-lg tracking-tight">PixelToolkit</span>
+      </a>
+
+      <a href="index.html" class="inline-flex items-center gap-1.5 rounded-lg border border-line text-sm font-medium px-4 py-2 hover:border-ink transition-colors focus-ring">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+        Back to home
+      </a>
+    </nav>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-5 sm:px-8 py-12 sm:py-16">
+
+    <!-- ================= TITLE ================= -->
+    <div class="max-w-xl">
+      <h1 class="font-display font-semibold text-3xl sm:text-4xl tracking-tight">Format Converter</h1>
+      <p class="mt-3 text-muted leading-relaxed">Upload an image and convert it to JPG, PNG, WebP, or GIF. Everything runs on your device — nothing is uploaded anywhere.</p>
+    </div>
+
+    <!-- ================= ERROR ================= -->
+    <p id="error-msg" class="hidden mt-6 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-4 py-3"></p>
+
+    <!-- ================= UPLOAD ZONE ================= -->
+    <div
+      id="drop-zone"
+      tabindex="0"
+      role="button"
+      aria-label="Upload an image"
+      class="mt-8 rounded-2xl border-2 border-dashed border-line bg-white px-6 py-14 sm:py-20 text-center cursor-pointer transition-colors focus-ring"
+    >
+      <div class="mx-auto w-12 h-12 rounded-lg bg-brand-blue/10 flex items-center justify-center">
+        <svg class="w-5 h-5 text-brand-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>
+        </svg>
+      </div>
+      <p class="mt-4 font-medium">Drag &amp; drop an image, or click to browse</p>
+      <p class="mt-1 text-sm text-muted">JPG, PNG or WebP</p>
+      <input id="file-input" type="file" accept="image/*" class="hidden" />
+    </div>
+
+    <!-- ================= WORKSPACE ================= -->
+    <div id="workspace" class="hidden mt-8">
+
+      <!-- File name + change link -->
+      <div class="flex items-center justify-between gap-4">
+        <p class="text-sm text-muted truncate"><span id="file-name" class="text-ink font-medium"></span></p>
+        <button id="change-btn" class="shrink-0 text-sm font-medium text-ink hover:text-brand-blue focus-ring rounded-md">Change image</button>
+      </div>
+
+      <!-- Format selector -->
+      <div class="mt-6 rounded-xl border border-line bg-white p-5">
+        <p class="text-sm font-semibold">Convert to</p>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <button data-format="jpeg" class="format-btn active rounded-lg px-4 py-2 text-sm font-semibold focus-ring">JPG</button>
+          <button data-format="png" class="format-btn rounded-lg px-4 py-2 text-sm font-semibold focus-ring">PNG</button>
+          <button data-format="webp" class="format-btn rounded-lg px-4 py-2 text-sm font-semibold focus-ring">WebP</button>
+          <button data-format="gif" class="format-btn rounded-lg px-4 py-2 text-sm font-semibold focus-ring">GIF</button>
+        </div>
+        <p id="format-note" class="mt-3 text-xs text-muted"></p>
+      </div>
+
+      <!-- Previews -->
+      <div class="mt-6 grid sm:grid-cols-2 gap-5">
+        <!-- Original -->
+        <div class="rounded-xl border border-line bg-white p-5">
+          <div class="flex items-center justify-between">
+            <h3 class="font-display font-semibold">Original</h3>
+            <span id="original-size" class="text-sm text-muted"></span>
+          </div>
+          <div class="mt-4 rounded-lg overflow-hidden bg-checker h-56 sm:h-64 flex items-center justify-center">
+            <img id="original-img" class="max-w-full max-h-full object-contain" alt="Original uploaded image" />
+          </div>
+        </div>
+
+        <!-- Converted -->
+        <div class="rounded-xl border border-line bg-white p-5">
+          <div class="flex items-center justify-between">
+            <h3 class="font-display font-semibold flex items-center gap-2">
+              Converted
+              <span id="status" class="hidden spinner" aria-label="Converting"></span>
+            </h3>
+            <span id="converted-size" class="text-sm text-muted"></span>
+          </div>
+          <div class="mt-4 rounded-lg overflow-hidden bg-checker h-56 sm:h-64 flex items-center justify-center">
+            <img id="converted-img" class="max-w-full max-h-full object-contain" alt="Converted preview" />
+          </div>
+        </div>
+      </div>
+
+      <p class="mt-3 text-xs text-muted">PNG and WebP keep transparency. JPG and GIF fill transparent areas with white. GIF is limited to 256 colors, so photos may look slightly banded.</p>
+
+      <!-- Download -->
+      <button
+        id="download-btn"
+        disabled
+        class="mt-6 w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-lg bg-brand-blue text-white text-sm font-semibold px-6 py-3 hover:bg-ink transition-colors focus-ring disabled:opacity-50 disabled:pointer-events-none"
+      >
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="M7 11l5 5 5-5"/><path d="M4 20h16"/></svg>
+        Download converted image
+      </button>
+    </div>
+
+  </main>
+
+  <footer class="border-t border-line mt-10">
+    <div class="max-w-5xl mx-auto px-5 sm:px-8 py-8 text-center text-xs text-muted">
+      © 2026 PixelToolkit. All tools are free to use.
+    </div>
+  </footer>
+
+  <script>
+    /* =========================================================
+       Minimal pure-JS GIF89a encoder (median-cut quantizer + LZW).
+       No external libraries — canvas.toBlob has no native GIF
+       encoder, so this fills that gap for the "GIF" option.
+       ========================================================= */
+    function quantizeToPalette(rgba, width, height, maxColors) {
+      maxColors = Math.min(256, maxColors || 256);
+      const counts = new Map();
+      const n = width * height;
+      for (let i = 0; i < n; i++) {
+        const o = i * 4;
+        const key = (rgba[o] << 16) | (rgba[o + 1] << 8) | rgba[o + 2];
+        counts.set(key, (counts.get(key) || 0) + 1);
+      }
+
+      const initialColors = [];
+      for (const [key, count] of counts) initialColors.push({ key, count });
+
+      function boxStats(colors) {
+        let rmin = 255, rmax = 0, gmin = 255, gmax = 0, bmin = 255, bmax = 0, weight = 0;
+        for (const c of colors) {
+          const r = (c.key >> 16) & 255, g = (c.key >> 8) & 255, b = c.key & 255;
+          if (r < rmin) rmin = r; if (r > rmax) rmax = r;
+          if (g < gmin) gmin = g; if (g > gmax) gmax = g;
+          if (b < bmin) bmin = b; if (b > bmax) bmax = b;
+          weight += c.count;
+        }
+        return { rmin, rmax, gmin, gmax, bmin, bmax, weight };
+      }
+
+      let boxes = [{ colors: initialColors, stats: boxStats(initialColors) }];
+
+      function longestAxis(stats) {
+        const rr = stats.rmax - stats.rmin;
+        const gr = stats.gmax - stats.gmin;
+        const br = stats.bmax - stats.bmin;
+        if (rr >= gr && rr >= br) return 'r';
+        if (gr >= rr && gr >= br) return 'g';
+        return 'b';
+      }
+
+      function splittable(box) {
+        return box.colors.length > 1 &&
+          (box.stats.rmax > box.stats.rmin || box.stats.gmax > box.stats.gmin || box.stats.bmax > box.stats.bmin);
+      }
+
+      while (boxes.length < maxColors) {
+        let bestIdx = -1, bestWeight = -1;
+        for (let i = 0; i < boxes.length; i++) {
+          if (splittable(boxes[i]) && boxes[i].stats.weight > bestWeight) {
+            bestWeight = boxes[i].stats.weight;
+            bestIdx = i;
+          }
+        }
+        if (bestIdx === -1) break;
+
+        const box = boxes[bestIdx];
+        const axis = longestAxis(box.stats);
+        const shift = axis === 'r' ? 16 : axis === 'g' ? 8 : 0;
+        const sorted = box.colors.slice().sort((a, b) => ((a.key >> shift) & 255) - ((b.key >> shift) & 255));
+
+        const half = box.stats.weight / 2;
+        let acc = 0, splitAt = 1;
+        for (let i = 0; i < sorted.length; i++) {
+          acc += sorted[i].count;
+          if (acc >= half) { splitAt = i + 1; break; }
+        }
+        if (splitAt >= sorted.length) splitAt = sorted.length - 1;
+        if (splitAt < 1) splitAt = 1;
+
+        const left = sorted.slice(0, splitAt);
+        const right = sorted.slice(splitAt);
+        if (left.length === 0 || right.length === 0) break;
+
+        boxes.splice(bestIdx, 1,
+          { colors: left, stats: boxStats(left) },
+          { colors: right, stats: boxStats(right) }
+        );
+      }
+
+      const palette = [];
+      const colorToIndex = new Map();
+      boxes.forEach((box, idx) => {
+        let rs = 0, gs = 0, bs = 0, ws = 0;
+        for (const c of box.colors) {
+          const r = (c.key >> 16) & 255, g = (c.key >> 8) & 255, b = c.key & 255;
+          rs += r * c.count; gs += g * c.count; bs += b * c.count; ws += c.count;
+          colorToIndex.set(c.key, idx);
+        }
+        palette.push([Math.round(rs / ws), Math.round(gs / ws), Math.round(bs / ws)]);
+      });
+
+      const indices = new Uint8Array(n);
+      for (let i = 0; i < n; i++) {
+        const o = i * 4;
+        const key = (rgba[o] << 16) | (rgba[o + 1] << 8) | rgba[o + 2];
+        indices[i] = colorToIndex.get(key);
+      }
+
+      return { palette, indices };
+    }
+
+    function encodeGIF(width, height, indices, palette) {
+      const BITS = 12;
+      const HSIZE = 5003;
+
+      const out = [];
+      function writeByte(b) { out.push(b & 0xFF); }
+      function writeBytes(arr) { for (let i = 0; i < arr.length; i++) writeByte(arr[i]); }
+      function writeString(s) { for (let i = 0; i < s.length; i++) writeByte(s.charCodeAt(i)); }
+      function writeShort(v) { writeByte(v & 0xFF); writeByte((v >> 8) & 0xFF); }
+
+      writeString('GIF89a');
+
+      const colorDepth = 8;
+      const paletteSize = 256;
+
+      writeShort(width);
+      writeShort(height);
+      writeByte(0x80 | ((colorDepth - 1) << 4) | (colorDepth - 1));
+      writeByte(0);
+      writeByte(0);
+
+      for (let i = 0; i < paletteSize; i++) {
+        const c = palette[i] || [0, 0, 0];
+        writeByte(c[0]); writeByte(c[1]); writeByte(c[2]);
+      }
+
+      writeByte(0x2C);
+      writeShort(0); writeShort(0);
+      writeShort(width); writeShort(height);
+      writeByte(0x00);
+
+      writeByte(colorDepth);
+
+      const initCodeSize = colorDepth;
+      const maxbits = BITS;
+      const ClearCode = 1 << initCodeSize;
+      const EOFCode = ClearCode + 1;
+
+      let n_bits = initCodeSize + 1;
+      function MAXCODE(nb) { return (1 << nb) - 1; }
+      let maxcode = MAXCODE(n_bits);
+      let free_ent = ClearCode + 2;
+      let clear_flg = false;
+
+      const htab = new Int32Array(HSIZE).fill(-1);
+      const codetab = new Int32Array(HSIZE);
+
+      let cur_accum = 0, cur_bits = 0;
+      const dataBlock = [];
+      function charOut(c) {
+        dataBlock.push(c & 0xFF);
+        if (dataBlock.length >= 255) flushBlock();
+      }
+      function flushBlock() {
+        if (dataBlock.length > 0) {
+          writeByte(dataBlock.length);
+          writeBytes(dataBlock);
+          dataBlock.length = 0;
+        }
+      }
+
+      // The width-growth check below must use free_ent as it stood BEFORE
+      // this pixel's dictionary insertion — the GIF LZW variant requires
+      // the code size to grow one code "early" compared to plain LZW.
+      function output(code) {
+        cur_accum |= (code << cur_bits);
+        cur_bits += n_bits;
+        while (cur_bits >= 8) {
+          charOut(cur_accum & 0xFF);
+          cur_accum >>= 8;
+          cur_bits -= 8;
+        }
+        if (free_ent > maxcode || clear_flg) {
+          if (clear_flg) {
+            n_bits = initCodeSize + 1;
+            maxcode = MAXCODE(n_bits);
+            clear_flg = false;
+          } else {
+            n_bits++;
+            maxcode = (n_bits === maxbits) ? (1 << maxbits) : MAXCODE(n_bits);
+          }
+        }
+      }
+
+      function clBlock() {
+        htab.fill(-1);
+        free_ent = ClearCode + 2;
+        clear_flg = true;
+        output(ClearCode);
+      }
+
+      output(ClearCode);
+
+      let ent = indices.length > 0 ? indices[0] : 0;
+
+      for (let i = 1; i < indices.length; i++) {
+        const c = indices[i];
+        const fcode = (c << maxbits) + ent;
+        const h = ((c << 6) ^ ent) % HSIZE;
+        const disp = h === 0 ? 1 : HSIZE - h;
+        let idx = h;
+        let found = false;
+
+        while (true) {
+          if (htab[idx] === -1) break;
+          if (htab[idx] === fcode) { ent = codetab[idx]; found = true; break; }
+          idx -= disp;
+          if (idx < 0) idx += HSIZE;
+        }
+
+        if (found) continue;
+
+        output(ent);
+        ent = c;
+
+        if (free_ent < (1 << maxbits)) {
+          codetab[idx] = free_ent++;
+          htab[idx] = fcode;
+        } else {
+          clBlock();
+        }
+      }
+
+      output(ent);
+      output(EOFCode);
+
+      while (cur_bits > 0) {
+        charOut(cur_accum & 0xFF);
+        cur_accum >>= 8;
+        cur_bits -= 8;
+      }
+      flushBlock();
+
+      writeByte(0x00);
+      writeByte(0x3B);
+
+      return new Uint8Array(out);
+    }
+
+    /* ============================= UI wiring ============================= */
+
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const workspace = document.getElementById('workspace');
+    const errorMsg = document.getElementById('error-msg');
+    const fileNameEl = document.getElementById('file-name');
+    const originalImg = document.getElementById('original-img');
+    const convertedImg = document.getElementById('converted-img');
+    const originalSizeEl = document.getElementById('original-size');
+    const convertedSizeEl = document.getElementById('converted-size');
+    const statusEl = document.getElementById('status');
+    const downloadBtn = document.getElementById('download-btn');
+    const changeBtn = document.getElementById('change-btn');
+    const formatButtons = Array.from(document.querySelectorAll('.format-btn'));
+    const formatNote = document.getElementById('format-note');
+
+    const NOTES = {
+      jpeg: 'JPG uses lossy compression and does not support transparency.',
+      png: 'PNG is lossless and keeps full transparency.',
+      webp: 'WebP is usually smaller than JPG or PNG and keeps transparency.',
+      gif: 'GIF is limited to 256 colors — great for simple graphics, not ideal for photos.',
+    };
+    const EXTENSIONS = { jpeg: 'jpg', png: 'png', webp: 'webp', gif: 'gif' };
+
+    let originalFile = null;
+    let originalObjectUrl = null;
+    let convertedObjectUrl = null;
+    let sourceImage = null;
+    let convertedBlob = null;
+    let currentFormat = 'jpeg';
+    let conversionToken = 0;
+
+    function formatBytes(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    function showError(message) {
+      errorMsg.textContent = message;
+      errorMsg.classList.remove('hidden');
+    }
+
+    function clearError() {
+      errorMsg.classList.add('hidden');
+      errorMsg.textContent = '';
+    }
+
+    function resetWorkspace() {
+      workspace.classList.add('hidden');
+      dropZone.classList.remove('hidden');
+      fileInput.value = '';
+      if (originalObjectUrl) URL.revokeObjectURL(originalObjectUrl);
+      if (convertedObjectUrl) URL.revokeObjectURL(convertedObjectUrl);
+      originalFile = null;
+      originalObjectUrl = null;
+      convertedObjectUrl = null;
+      sourceImage = null;
+      convertedBlob = null;
+      downloadBtn.disabled = true;
+    }
+
+    function setFormat(format) {
+      currentFormat = format;
+      formatButtons.forEach((btn) => btn.classList.toggle('active', btn.dataset.format === format));
+      formatNote.textContent = NOTES[format] || '';
+      convert();
+    }
+
+    function handleFile(file) {
+      clearError();
+
+      if (!file || !file.type.startsWith('image/')) {
+        showError('Please choose an image file (JPG, PNG, or WebP).');
+        return;
+      }
+
+      originalFile = file;
+      if (originalObjectUrl) URL.revokeObjectURL(originalObjectUrl);
+      originalObjectUrl = URL.createObjectURL(file);
+
+      const img = new Image();
+      img.onload = () => {
+        sourceImage = img;
+        originalImg.src = originalObjectUrl;
+        fileNameEl.textContent = file.name;
+        originalSizeEl.textContent = formatBytes(file.size);
+        dropZone.classList.add('hidden');
+        workspace.classList.remove('hidden');
+        formatNote.textContent = NOTES[currentFormat] || '';
+        convert();
+      };
+      img.onerror = () => {
+        showError('This image could not be read. Try a different file.');
+      };
+      img.src = originalObjectUrl;
+    }
+
+    function convert() {
+      if (!sourceImage) return;
+
+      const token = ++conversionToken;
+      statusEl.classList.remove('hidden');
+      downloadBtn.disabled = true;
+
+      // Let the "Converting…" indicator paint before any heavy synchronous work.
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          if (token !== conversionToken) return;
+          runConversion(token);
+        }, 0);
+      });
+    }
+
+    function runConversion(token) {
+      const canvas = document.createElement('canvas');
+      canvas.width = sourceImage.naturalWidth;
+      canvas.height = sourceImage.naturalHeight;
+      const ctx = canvas.getContext('2d');
+
+      const keepsAlpha = currentFormat === 'png' || currentFormat === 'webp';
+      if (!keepsAlpha) {
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      ctx.drawImage(sourceImage, 0, 0);
+
+      function finish(blob) {
+        if (token !== conversionToken) return;
+        statusEl.classList.add('hidden');
+
+        if (!blob) {
+          showError('Conversion failed. Try a different image or browser.');
+          return;
+        }
+
+        convertedBlob = blob;
+        if (convertedObjectUrl) URL.revokeObjectURL(convertedObjectUrl);
+        convertedObjectUrl = URL.createObjectURL(blob);
+        convertedImg.src = convertedObjectUrl;
+        convertedSizeEl.textContent = formatBytes(blob.size);
+        downloadBtn.disabled = false;
+      }
+
+      if (currentFormat === 'gif') {
+        try {
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const { palette, indices } = quantizeToPalette(imageData.data, canvas.width, canvas.height, 256);
+          const gifBytes = encodeGIF(canvas.width, canvas.height, indices, palette);
+          finish(new Blob([gifBytes], { type: 'image/gif' }));
+        } catch (err) {
+          finish(null);
+        }
+        return;
+      }
+
+      const mime = currentFormat === 'jpeg' ? 'image/jpeg' : currentFormat === 'webp' ? 'image/webp' : 'image/png';
+      const quality = currentFormat === 'png' ? undefined : 0.92;
+      canvas.toBlob(finish, mime, quality);
+    }
+
+    formatButtons.forEach((btn) => {
+      btn.addEventListener('click', () => setFormat(btn.dataset.format));
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) handleFile(e.target.files[0]);
+    });
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        fileInput.click();
+      }
+    });
+
+    ['dragenter', 'dragover'].forEach((evt) => {
+      dropZone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        dropZone.classList.add('drag-active');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach((evt) => {
+      dropZone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-active');
+      });
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      const file = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) handleFile(file);
+    });
+
+    downloadBtn.addEventListener('click', () => {
+      if (!convertedBlob || !convertedObjectUrl) return;
+      const base = originalFile ? originalFile.name.replace(/\.[^/.]+$/, '') : 'image';
+      const ext = EXTENSIONS[currentFormat] || 'jpg';
+      const a = document.createElement('a');
+      a.href = convertedObjectUrl;
+      a.download = base + '-converted.' + ext;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    });
+
+    changeBtn.addEventListener('click', resetWorkspace);
+  </script>
+
+</body>
+</html>
