@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Passport Photo Maker — PixelToolkit</title>
+<meta name="description" content="Crop, style, and export a passport or visa photo to the exact size you need, right in your browser." />
+
+<!-- Tailwind CDN -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          paper: '#F5F6F3',
+          ink: '#15161A',
+          muted: '#6B6F76',
+          line: '#E2E3DE',
+          brand: {
+            blue: '#3358FF',
+            orange: '#FF5A36',
+          },
+        },
+        fontFamily: {
+          display: ['"Space Grotesk"', 'ui-sans-serif', 'sans-serif'],
+          sans: ['Inter', 'ui-sans-serif', 'sans-serif'],
+        },
+      },
+    },
+  };
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+<style>
+  body { font-family: 'Inter', ui-sans-serif, sans-serif; }
+  .font-display { font-family: 'Space Grotesk', ui-sans-serif, sans-serif; }
+
+  .focus-ring:focus-visible {
+    outline: 2px solid #3358FF;
+    outline-offset: 2px;
+  }
+
+  #drop-zone.drag-active {
+    border-color: #3358FF;
+    background-color: rgba(51, 88, 255, 0.05);
+  }
+
+  .pill-btn {
+    border: 1px solid #E2E3DE;
+    color: #15161A;
+    background: #ffffff;
+    transition: border-color .15s ease, background-color .15s ease, color .15s ease;
+  }
+  .pill-btn.active {
+    border-color: #3358FF;
+    background-color: #3358FF;
+    color: #ffffff;
+  }
+
+  .swatch {
+    width: 30px;
+    height: 30px;
+    border-radius: 9999px;
+    border: 1px solid #E2E3DE;
+    cursor: pointer;
+    transition: box-shadow .15s ease;
+  }
+  .swatch.active {
+    box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #3358FF;
+  }
+
+  #crop-frame {
+    position: relative;
+    overflow: hidden;
+    background: #E2E3DE;
+    touch-action: none;
+    cursor: grab;
+  }
+  #crop-frame.dragging { cursor: grabbing; }
+  #crop-img {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    max-width: none;
+    max-height: none;
+    transform-origin: center center;
+    user-select: none;
+    -webkit-user-drag: none;
+    pointer-events: none;
+  }
+  #guide-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  #preview-canvas {
+    display: block;
+    border: 1px solid #E2E3DE;
+    border-radius: 0.5rem;
+    background: #E2E3DE;
+  }
+
+  /* toggle switch */
+  .toggle-track {
+    width: 40px;
+    height: 24px;
+    border-radius: 9999px;
+    background: #E2E3DE;
+    position: relative;
+    transition: background-color .15s ease;
+    flex-shrink: 0;
+  }
+  .toggle-dot {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 20px;
+    height: 20px;
+    border-radius: 9999px;
+    background: #ffffff;
+    transition: transform .15s ease;
+  }
+  input.toggle-checkbox:checked + .toggle-track {
+    background: #3358FF;
+  }
+  input.toggle-checkbox:checked + .toggle-track .toggle-dot {
+    transform: translateX(16px);
+  }
+
+  .spinner {
+    display: inline-block;
+    border: 2px solid rgba(255,255,255,0.4);
+    border-top-color: #ffffff;
+    border-radius: 9999px;
+    width: 14px;
+    height: 14px;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+
+<body class="bg-paper text-ink antialiased min-h-screen">
+
+  <!-- ================= HEADER ================= -->
+  <header class="sticky top-0 z-50 bg-paper/90 backdrop-blur border-b border-line">
+    <nav class="max-w-5xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
+      <a href="index.html" class="flex items-center gap-2.5 focus-ring rounded-md">
+        <span class="grid grid-cols-2 grid-rows-2 gap-[3px]" aria-hidden="true">
+          <span class="w-2.5 h-2.5 rounded-[2px] bg-brand-blue"></span>
+          <span class="w-2.5 h-2.5 rounded-[2px] bg-ink"></span>
+          <span class="w-2.5 h-2.5 rounded-[2px] bg-ink"></span>
+          <span class="w-2.5 h-2.5 rounded-[2px] bg-brand-orange"></span>
+        </span>
+        <span class="font-display font-semibold text-lg tracking-tight">PixelToolkit</span>
+      </a>
+
+      <a href="index.html" class="inline-flex items-center gap-1.5 rounded-lg border border-line text-sm font-medium px-4 py-2 hover:border-ink transition-colors focus-ring">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+        Back to home
+      </a>
+    </nav>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-5 sm:px-8 py-12 sm:py-16">
+
+    <!-- ================= TITLE ================= -->
+    <div class="max-w-xl">
+      <h1 class="font-display font-semibold text-3xl sm:text-4xl tracking-tight">Passport Photo Maker</h1>
+      <p class="mt-3 text-muted leading-relaxed">Upload a photo, pick a size, style it, and export a print-ready file. Everything runs on your device.</p>
+    </div>
+
+    <!-- ================= ERROR ================= -->
+    <p id="error-msg" class="hidden mt-6 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-4 py-3"></p>
+
+    <!-- ================= UPLOAD ZONE ================= -->
+    <div
+      id="drop-zone"
+      tabindex="0"
+      role="button"
+      aria-label="Upload a photo"
+      class="mt-8 rounded-2xl border-2 border-dashed border-line bg-white px-6 py-14 sm:py-20 text-center cursor-pointer transition-colors focus-ring"
+    >
+      <div class="mx-auto w-12 h-12 rounded-lg bg-brand-blue/10 flex items-center justify-center">
+        <svg class="w-5 h-5 text-brand-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>
+        </svg>
+      </div>
+      <p class="mt-4 font-medium">Drag &amp; drop a photo, or click to browse</p>
+      <p class="mt-1 text-sm text-muted">A front-facing photo works best</p>
+      <input id="file-input" type="file" accept="image/*" class="hidden" />
+    </div>
+
+    <!-- ================= WORKSPACE ================= -->
+    <div id="workspace" class="hidden mt-8">
+
+      <!-- File name + change link -->
+      <div class="flex items-center justify-between gap-4">
+        <p class="text-sm text-muted truncate"><span id="file-name" class="text-ink font-medium"></span></p>
+        <button id="change-btn" class="shrink-0 text-sm font-medium text-ink hover:text-brand-blue focus-ring rounded-md">Change photo</button>
+      </div>
+
+      <div class="mt-6 grid md:grid-cols-2 gap-6">
+
+        <!-- Controls -->
+        <div class="space-y-5">
+          <div class="rounded-xl border border-line bg-white p-5">
+            <p class="text-sm font-semibold">Photo size</p>
+            <div id="preset-group" class="mt-3 flex flex-wrap gap-2"></div>
+            <p id="size-note" class="mt-3 text-xs text-muted"></p>
+          </div>
+
+          <div class="rounded-xl border border-line bg-white p-5">
+            <p class="text-sm font-semibold">Background</p>
+            <p class="mt-1 text-xs text-muted">Solid colors and gradients. Used to fill transparent areas and as the target color for background replace.</p>
+            <div id="bg-group" class="mt-3 flex flex-wrap items-center gap-3"></div>
+          </div>
+
+          <div class="rounded-xl border border-line bg-white p-5">
+            <p class="text-sm font-semibold">Enhance</p>
+            <p class="mt-1 text-xs text-muted">Overall photo quality adjustments.</p>
+            <div id="enhance-group" class="mt-3 flex flex-wrap gap-2"></div>
+          </div>
+
+          <div class="rounded-xl border border-line bg-white p-5">
+            <p class="text-sm font-semibold">Beauty</p>
+            <p class="mt-1 text-xs text-muted">Portrait finishing tone and glow.</p>
+            <div id="beauty-group" class="mt-3 flex flex-wrap gap-2"></div>
+          </div>
+
+          <div class="rounded-xl border border-line bg-white p-5">
+            <label class="flex items-center gap-3 cursor-pointer select-none">
+              <input id="replace-bg-toggle" type="checkbox" class="toggle-checkbox sr-only" />
+              <span class="toggle-track"><span class="toggle-dot"></span></span>
+              <span class="text-sm font-semibold">Try to replace background</span>
+            </label>
+            <p class="mt-2 text-xs text-muted">Detects a plain background (like a wall) and swaps it for the color above. Works best with a single, even-colored background — for busy backgrounds, use the Background Remover tool first.</p>
+
+            <div id="replace-bg-controls" class="hidden mt-4 space-y-4">
+              <div>
+                <div class="flex items-center justify-between">
+                  <label for="intensity-slider" class="text-sm font-medium">Intensity</label>
+                  <span id="intensity-value" class="text-sm text-brand-blue font-semibold">35%</span>
+                </div>
+                <input id="intensity-slider" type="range" min="5" max="100" value="35" class="w-full mt-2 accent-[#3358FF]" />
+                <p class="mt-1 text-xs text-muted">How much of the near-background color gets replaced.</p>
+              </div>
+              <div>
+                <div class="flex items-center justify-between">
+                  <label for="opacity-slider" class="text-sm font-medium">Opacity</label>
+                  <span id="opacity-value" class="text-sm text-brand-blue font-semibold">100%</span>
+                </div>
+                <input id="opacity-slider" type="range" min="0" max="100" value="100" class="w-full mt-2 accent-[#3358FF]" />
+                <p class="mt-1 text-xs text-muted">How strongly the new color is applied.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-line bg-white p-5">
+            <div class="flex items-center justify-between">
+              <label for="zoom-slider" class="text-sm font-semibold">Zoom</label>
+              <span id="zoom-value" class="font-display text-sm font-semibold text-brand-blue">100%</span>
+            </div>
+            <input id="zoom-slider" type="range" min="100" max="300" value="100" class="w-full mt-3 accent-[#3358FF]" />
+            <p class="mt-3 text-xs text-muted">Drag the photo inside the frame to reposition it.</p>
+          </div>
+        </div>
+
+        <!-- Crop + live preview -->
+        <div class="space-y-5">
+          <div class="rounded-xl border border-line bg-white p-5 flex flex-col items-center justify-center">
+            <p class="w-full text-sm font-semibold mb-3">Position your photo</p>
+            <div id="crop-frame" class="w-[240px] sm:w-[280px]">
+              <img id="crop-img" alt="Photo to crop" draggable="false" />
+              <svg id="guide-overlay" viewBox="0 0 100 100" preserveAspectRatio="none">
+                <ellipse cx="50" cy="46" rx="26" ry="34" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1" stroke-dasharray="3 3" />
+              </svg>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-line bg-white p-5 flex flex-col items-center justify-center">
+            <p class="w-full text-sm font-semibold mb-3">Live preview</p>
+            <canvas id="preview-canvas"></canvas>
+            <p id="output-dims" class="mt-4 text-xs text-muted text-center"></p>
+          </div>
+
+          <div class="rounded-xl border border-brand-orange/30 bg-brand-orange/5 p-5">
+            <p class="text-sm font-semibold">Before you submit an official photo</p>
+            <p class="mt-1 text-xs text-muted leading-relaxed">Many governments (Canada, for example) do not allow retouching, filters, or background replacement in official passport or visa photos. For a real application, keep Enhance, Beauty, and Replace-background off — just set the correct size and a plain background color, and confirm your country's current rules before submitting.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Download -->
+      <button
+        id="download-btn"
+        class="mt-6 w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-lg bg-brand-blue text-white text-sm font-semibold px-6 py-3 hover:bg-ink transition-colors focus-ring disabled:opacity-60 disabled:pointer-events-none"
+      >
+        <svg id="download-icon" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="M7 11l5 5 5-5"/><path d="M4 20h16"/></svg>
+        <span id="download-spinner" class="hidden spinner"></span>
+        <span id="download-label">Download passport photo</span>
+      </button>
+      <p class="mt-3 text-xs text-muted">When printing, ask for the photo at its actual size (no "fit to page" scaling).</p>
+    </div>
+
+  </main>
+
+  <footer class="border-t border-line mt-10">
+    <div class="max-w-5xl mx-auto px-5 sm:px-8 py-8 text-center text-xs text-muted">
+      © 2026 PixelToolkit. All tools are free to use.
+    </div>
+  </footer>
+
+  <script>
+    const DPI = 300;
+
+    const PRESETS = [
+      { id: 'us2x2', label: 'US · 2 × 2 in', widthIn: 2, heightIn: 2 },
+      { id: 'ukeu', label: 'UK/EU/Schengen · 35 × 45 mm', widthIn: 35 / 25.4, heightIn: 45 / 25.4 },
+      { id: 'india', label: 'India · 3.5 × 4.5 cm', widthIn: 3.5 / 2.54, heightIn: 4.5 / 2.54 },
+      { id: 'pakistan', label: 'Pakistan · 35 × 45 mm', widthIn: 35 / 25.4, heightIn: 45 / 25.4 },
+      { id: 'australia', label: 'Australia · 35 × 45 mm', widthIn: 35 / 25.4, heightIn: 45 / 25.4 },
+      { id: 'canada', label: 'Canada · 50 × 70 mm', widthIn: 50 / 25.4, heightIn: 70 / 25.4 },
+      { id: 'china', label: 'China Visa · 33 × 48 mm', widthIn: 33 / 25.4, heightIn: 48 / 25.4 },
+    ];
+
+    const BG_OPTIONS = [
+      { id: 'white', label: 'White', type: 'solid', colors: ['#FFFFFF'] },
+      { id: 'offwhite', label: 'Off-White', type: 'solid', colors: ['#F2EEE3'] },
+      { id: 'lightgray', label: 'Light Gray', type: 'solid', colors: ['#D9D9D6'] },
+      { id: 'blue', label: 'Blue', type: 'solid', colors: ['#5B8DBE'] },
+      { id: 'navy', label: 'Navy', type: 'solid', colors: ['#2C3E63'] },
+      { id: 'red', label: 'Red', type: 'solid', colors: ['#B33A3A'] },
+      { id: 'grad-blue', label: 'Blue Gradient', type: 'gradient', colors: ['#BFD7EE', '#5B8DBE'] },
+      { id: 'grad-gray', label: 'Gray Gradient', type: 'gradient', colors: ['#F2F2F0', '#C7C8C3'] },
+      { id: 'grad-warm', label: 'Warm Gradient', type: 'gradient', colors: ['#FDEBD3', '#E8A87C'] },
+    ];
+
+    const ENHANCE_FILTERS = [
+      { id: 'none', label: 'None' },
+      { id: 'auto', label: 'Auto Enhance' },
+      { id: 'sharpen', label: 'Sharpen' },
+      { id: 'vivid', label: 'Vivid Colors' },
+      { id: 'bw', label: 'Black & White' },
+      { id: 'hd', label: 'HD Clarity' },
+    ];
+
+    const BEAUTY_FILTERS = [
+      { id: 'none', label: 'None' },
+      { id: 'natural', label: 'Natural Glow' },
+      { id: 'smooth', label: 'Smooth Skin' },
+      { id: 'bright', label: 'Bright & Clear' },
+      { id: 'warm', label: 'Warm Tone' },
+      { id: 'cool', label: 'Cool Tone' },
+    ];
+
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const workspace = document.getElementById('workspace');
+    const errorMsg = document.getElementById('error-msg');
+    const fileNameEl = document.getElementById('file-name');
+    const changeBtn = document.getElementById('change-btn');
+    const presetGroup = document.getElementById('preset-group');
+    const sizeNote = document.getElementById('size-note');
+    const bgGroup = document.getElementById('bg-group');
+    const enhanceGroup = document.getElementById('enhance-group');
+    const beautyGroup = document.getElementById('beauty-group');
+    const zoomSlider = document.getElementById('zoom-slider');
+    const zoomValue = document.getElementById('zoom-value');
+    const cropFrame = document.getElementById('crop-frame');
+    const cropImg = document.getElementById('crop-img');
+    const outputDims = document.getElementById('output-dims');
+    const downloadBtn = document.getElementById('download-btn');
+    const downloadSpinner = document.getElementById('download-spinner');
+    const downloadIcon = document.getElementById('download-icon');
+    const downloadLabel = document.getElementById('download-label');
+    const previewCanvas = document.getElementById('preview-canvas');
+
+    const replaceBgToggle = document.getElementById('replace-bg-toggle');
+    const replaceBgControls = document.getElementById('replace-bg-controls');
+    const intensitySlider = document.getElementById('intensity-slider');
+    const intensityValue = document.getElementById('intensity-value');
+    const opacitySlider = document.getElementById('opacity-slider');
+    const opacityValue = document.getElementById('opacity-value');
+
+    let originalFile = null;
+    let originalObjectUrl = null;
+    let sourceImage = null;
+
+    let currentPreset = PRESETS[0];
+    let currentBg = BG_OPTIONS[0];
+    let currentEnhance = ENHANCE_FILTERS[0];
+    let currentBeauty = BEAUTY_FILTERS[0];
+    let replaceBgEnabled = false;
+    let intensityPct = 35;
+    let opacityPct = 100;
+
+    let frameW = 0, frameH = 0;
+    let coverScale = 1;
+    let scale = 1;
+    let offsetX = 0, offsetY = 0;
+
+    function showError(message) {
+      errorMsg.textContent = message;
+      errorMsg.classList.remove('hidden');
+    }
+    function clearError() {
+      errorMsg.classList.add('hidden');
+      errorMsg.textContent = '';
+    }
+
+    function backgroundCssValue(bg) {
+      return bg.type === 'gradient'
+        ? 'linear-gradient(135deg, ' + bg.colors[0] + ', ' + bg.colors[1] + ')'
+        : bg.colors[0];
+    }
+
+    // ---- build pickers ----
+    function buildPillGroup(container, items, getCurrent, onSelect) {
+      items.forEach((item) => {
+        const btn = document.createElement('button');
+        btn.textContent = item.label;
+        btn.className = 'pill-btn rounded-lg px-4 py-2 text-sm font-semibold focus-ring' + (item.id === getCurrent().id ? ' active' : '');
+        btn.dataset.id = item.id;
+        btn.addEventListener('click', () => {
+          onSelect(item);
+          Array.from(container.children).forEach((b) => b.classList.toggle('active', b.dataset.id === item.id));
+        });
+        container.appendChild(btn);
+      });
+    }
+
+    buildPillGroup(presetGroup, PRESETS, () => currentPreset, (preset) => {
+      currentPreset = preset;
+      applyPresetAspect();
+      updateOutputLabel();
+      if (sourceImage) {
+        zoomSlider.value = 100;
+        zoomValue.textContent = '100%';
+        recomputeFrameMetrics(true);
+      }
+    });
+
+    buildPillGroup(enhanceGroup, ENHANCE_FILTERS, () => currentEnhance, (item) => {
+      currentEnhance = item;
+      scheduleLivePreview();
+    });
+
+    buildPillGroup(beautyGroup, BEAUTY_FILTERS, () => currentBeauty, (item) => {
+      currentBeauty = item;
+      scheduleLivePreview();
+    });
+
+    BG_OPTIONS.forEach((bg) => {
+      const btn = document.createElement('button');
+      btn.className = 'swatch focus-ring' + (bg.id === currentBg.id ? ' active' : '');
+      btn.style.background = backgroundCssValue(bg);
+      btn.setAttribute('aria-label', bg.label);
+      btn.title = bg.label;
+      btn.dataset.id = bg.id;
+      btn.addEventListener('click', () => selectBg(bg));
+      bgGroup.appendChild(btn);
+    });
+
+    function selectBg(bg) {
+      currentBg = bg;
+      Array.from(bgGroup.children).forEach((btn) => btn.classList.toggle('active', btn.dataset.id === bg.id));
+      cropFrame.style.background = backgroundCssValue(bg);
+      scheduleLivePreview();
+    }
+
+    replaceBgToggle.addEventListener('change', () => {
+      replaceBgEnabled = replaceBgToggle.checked;
+      replaceBgControls.classList.toggle('hidden', !replaceBgEnabled);
+      scheduleLivePreview();
+    });
+    intensitySlider.addEventListener('input', () => {
+      intensityPct = Number(intensitySlider.value);
+      intensityValue.textContent = intensityPct + '%';
+      scheduleLivePreview();
+    });
+    opacitySlider.addEventListener('input', () => {
+      opacityPct = Number(opacitySlider.value);
+      opacityValue.textContent = opacityPct + '%';
+      scheduleLivePreview();
+    });
+
+    function getOutputSize() {
+      return {
+        w: Math.round(currentPreset.widthIn * DPI),
+        h: Math.round(currentPreset.heightIn * DPI),
+      };
+    }
+
+    function applyPresetAspect() {
+      const { w, h } = getOutputSize();
+      cropFrame.style.aspectRatio = w + ' / ' + h;
+    }
+
+    function updateOutputLabel() {
+      const { w, h } = getOutputSize();
+      sizeNote.textContent = w + ' × ' + h + ' px at ' + DPI + ' DPI';
+      outputDims.textContent = currentPreset.label + '  ·  ' + w + ' × ' + h + ' px';
+    }
+
+    // ---- crop geometry ----
+    function recomputeFrameMetrics(resetZoomAndPosition) {
+      if (!sourceImage) return;
+      const rect = cropFrame.getBoundingClientRect();
+      frameW = rect.width;
+      frameH = rect.height;
+
+      const naturalW = sourceImage.naturalWidth;
+      const naturalH = sourceImage.naturalHeight;
+      const newCoverScale = Math.max(frameW / naturalW, frameH / naturalH);
+
+      if (resetZoomAndPosition || !coverScale) {
+        coverScale = newCoverScale;
+        scale = coverScale;
+        offsetX = 0;
+        offsetY = 0;
+      } else {
+        const zoomRatio = scale / coverScale;
+        coverScale = newCoverScale;
+        scale = coverScale * zoomRatio;
+      }
+
+      cropImg.style.width = naturalW + 'px';
+      cropImg.style.height = naturalH + 'px';
+
+      clampOffsets();
+      applyTransform();
+    }
+
+    function clampOffsets() {
+      const naturalW = sourceImage.naturalWidth;
+      const naturalH = sourceImage.naturalHeight;
+      const scaledW = naturalW * scale;
+      const scaledH = naturalH * scale;
+      const maxOffsetX = Math.max(0, (scaledW - frameW) / 2);
+      const maxOffsetY = Math.max(0, (scaledH - frameH) / 2);
+      offsetX = Math.min(maxOffsetX, Math.max(-maxOffsetX, offsetX));
+      offsetY = Math.min(maxOffsetY, Math.max(-maxOffsetY, offsetY));
+    }
+
+    function applyTransform() {
+      cropImg.style.transform = 'translate(-50%, -50%) translate(' + offsetX + 'px, ' + offsetY + 'px) scale(' + scale + ')';
+      scheduleLivePreview();
+    }
+
+    // ---- dragging ----
+    let dragging = false;
+    let dragStartX = 0, dragStartY = 0, dragStartOffsetX = 0, dragStartOffsetY = 0;
+
+    cropFrame.addEventListener('pointerdown', (e) => {
+      if (!sourceImage) return;
+      dragging = true;
+      cropFrame.classList.add('dragging');
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      dragStartOffsetX = offsetX;
+      dragStartOffsetY = offsetY;
+      cropFrame.setPointerCapture(e.pointerId);
+    });
+    cropFrame.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      offsetX = dragStartOffsetX + (e.clientX - dragStartX);
+      offsetY = dragStartOffsetY + (e.clientY - dragStartY);
+      clampOffsets();
+      applyTransform();
+    });
+    function endDrag() {
+      dragging = false;
+      cropFrame.classList.remove('dragging');
+    }
+    cropFrame.addEventListener('pointerup', endDrag);
+    cropFrame.addEventListener('pointercancel', endDrag);
+
+    zoomSlider.addEventListener('input', () => {
+      const pct = Number(zoomSlider.value);
+      zoomValue.textContent = pct + '%';
+      scale = coverScale * (pct / 100);
+      clampOffsets();
+      applyTransform();
+    });
+
+    let resizeTimer = null;
+    window.addEventListener('resize', () => {
+      if (!sourceImage) return;
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => recomputeFrameMetrics(false), 150);
+    });
+
+    // ---- pixel-level image processing helpers ----
+    function hexToRgb(hex) {
+      const clean = hex.replace('#', '');
+      return [
+        parseInt(clean.substring(0, 2), 16),
+        parseInt(clean.substring(2, 4), 16),
+        parseInt(clean.substring(4, 6), 16),
+      ];
+    }
+
+    function lerp(a, b, t) { return a + (b - a) * t; }
+
+    function bgColorAt(ny) {
+      if (currentBg.type === 'gradient') {
+        const c1 = hexToRgb(currentBg.colors[0]);
+        const c2 = hexToRgb(currentBg.colors[1]);
+        return [lerp(c1[0], c2[0], ny), lerp(c1[1], c2[1], ny), lerp(c1[2], c2[2], ny)];
+      }
+      return hexToRgb(currentBg.colors[0]);
+    }
+
+    function adjustBCS(data, brightness, contrast, saturation) {
+      for (let i = 0; i < data.length; i += 4) {
+        let r = data[i], g = data[i + 1], b = data[i + 2];
+        r *= brightness; g *= brightness; b *= brightness;
+        r = (r - 128) * contrast + 128;
+        g = (g - 128) * contrast + 128;
+        b = (b - 128) * contrast + 128;
+        const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+        r = luma + (r - luma) * saturation;
+        g = luma + (g - luma) * saturation;
+        b = luma + (b - luma) * saturation;
+        data[i] = r; data[i + 1] = g; data[i + 2] = b;
+      }
+    }
+
+    function grayscaleInPlace(data, contrast) {
+      for (let i = 0; i < data.length; i += 4) {
+        const luma = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        const v = (luma - 128) * contrast + 128;
+        data[i] = v; data[i + 1] = v; data[i + 2] = v;
+      }
+    }
+
+    function tintChannels(data, dr, dg, db) {
+      for (let i = 0; i < data.length; i += 4) {
+        data[i] = data[i] + dr;
+        data[i + 1] = data[i + 1] + dg;
+        data[i + 2] = data[i + 2] + db;
+      }
+    }
+
+    function autoLevels(data) {
+      const hist = [new Array(256).fill(0), new Array(256).fill(0), new Array(256).fill(0)];
+      const total = data.length / 4;
+      for (let i = 0; i < data.length; i += 4) {
+        hist[0][data[i]]++;
+        hist[1][data[i + 1]]++;
+        hist[2][data[i + 2]]++;
+      }
+      const lows = [0, 0, 0], highs = [255, 255, 255];
+      const clipFrac = 0.01;
+      for (let c = 0; c < 3; c++) {
+        let cum = 0;
+        const lowThresh = total * clipFrac;
+        for (let v = 0; v < 256; v++) {
+          cum += hist[c][v];
+          if (cum >= lowThresh) { lows[c] = v; break; }
+        }
+        cum = 0;
+        const highThresh = total * clipFrac;
+        for (let v = 255; v >= 0; v--) {
+          cum += hist[c][v];
+          if (cum >= highThresh) { highs[c] = v; break; }
+        }
+      }
+      const luts = [0, 1, 2].map((c) => {
+        const lo = lows[c];
+        const hi = Math.max(lo + 1, highs[c]);
+        const lut = new Uint8ClampedArray(256);
+        for (let v = 0; v < 256; v++) {
+          lut[v] = ((v - lo) / (hi - lo)) * 255;
+        }
+        return lut;
+      });
+      for (let i = 0; i < data.length; i += 4) {
+        data[i] = luts[0][data[i]];
+        data[i + 1] = luts[1][data[i + 1]];
+        data[i + 2] = luts[2][data[i + 2]];
+      }
+      adjustBCS(data, 1.0, 1.0, 1.12);
+    }
+
+    function sharpenInPlace(imageData, amount) {
+      const w = imageData.width, h = imageData.height;
+      const data = imageData.data;
+      const src = new Uint8ClampedArray(data);
+      function at(x, y, c) {
+        const cx = x < 0 ? 0 : x >= w ? w - 1 : x;
+        const cy = y < 0 ? 0 : y >= h ? h - 1 : y;
+        return src[(cy * w + cx) * 4 + c];
+      }
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const idx = (y * w + x) * 4;
+          for (let c = 0; c < 3; c++) {
+            const center = at(x, y, c);
+            const sum = at(x - 1, y, c) + at(x + 1, y, c) + at(x, y - 1, c) + at(x, y + 1, c);
+            data[idx + c] = center + amount * (center * 4 - sum);
+          }
+        }
+      }
+    }
+
+    function applyEnhanceFilter(imageData, id) {
+      const data = imageData.data;
+      if (id === 'auto') {
+        autoLevels(data);
+      } else if (id === 'vivid') {
+        adjustBCS(data, 1.0, 1.08, 1.45);
+      } else if (id === 'bw') {
+        grayscaleInPlace(data, 1.05);
+      } else if (id === 'sharpen') {
+        sharpenInPlace(imageData, 0.35);
+      } else if (id === 'hd') {
+        adjustBCS(data, 1.0, 1.06, 1.05);
+        sharpenInPlace(imageData, 0.2);
+      }
+    }
+
+    function applyBeautyFilter(imageData, id) {
+      const data = imageData.data;
+      if (id === 'natural') {
+        adjustBCS(data, 1.02, 1.03, 1.03);
+      } else if (id === 'bright') {
+        adjustBCS(data, 1.12, 1.03, 1.05);
+      } else if (id === 'warm') {
+        tintChannels(data, 8, 3, -8);
+      } else if (id === 'cool') {
+        tintChannels(data, -6, 1, 10);
+      }
+    }
+
+    function estimateBackgroundColor(data, width, height) {
+      const samples = [];
+      const margin = Math.max(1, Math.round(Math.min(width, height) * 0.02));
+      const stepX = Math.max(1, Math.floor(width / 40));
+      const stepY = Math.max(1, Math.floor(height / 40));
+      function pixelAt(x, y) {
+        const o = (y * width + x) * 4;
+        return [data[o], data[o + 1], data[o + 2]];
+      }
+      for (let x = 0; x < width; x += stepX) {
+        samples.push(pixelAt(x, margin));
+        samples.push(pixelAt(x, height - 1 - margin));
+      }
+      for (let y = 0; y < height; y += stepY) {
+        samples.push(pixelAt(margin, y));
+        samples.push(pixelAt(width - 1 - margin, y));
+      }
+      let r = 0, g = 0, b = 0;
+      samples.forEach((p) => { r += p[0]; g += p[1]; b += p[2]; });
+      const n = samples.length || 1;
+      return [r / n, g / n, b / n];
+    }
+
+    function replaceBackgroundInPlace(imageData, tolerancePct, strengthPct) {
+      const data = imageData.data;
+      const width = imageData.width, height = imageData.height;
+      const [br, bgc, bb] = estimateBackgroundColor(data, width, height);
+      const tolerance = Math.max(1, (tolerancePct / 100) * 260);
+      const strength = strengthPct / 100;
+      for (let y = 0; y < height; y++) {
+        const ny = height > 1 ? y / (height - 1) : 0;
+        const target = bgColorAt(ny);
+        const tr = target[0], tg = target[1], tb = target[2];
+        for (let x = 0; x < width; x++) {
+          const i = (y * width + x) * 4;
+          const r = data[i], g = data[i + 1], b = data[i + 2];
+          const dr = r - br, dg = g - bgc, db = b - bb;
+          const dist = Math.sqrt(dr * dr + dg * dg + db * db);
+          if (dist < tolerance) {
+            const t = 1 - dist / tolerance;
+            const alpha = t * strength;
+            data[i] = r + (tr - r) * alpha;
+            data[i + 1] = g + (tg - g) * alpha;
+            data[i + 2] = b + (tb - b) * alpha;
+          }
+        }
+      }
+    }
+
+    // ---- shared composite renderer (used by both the live preview and the final export) ----
+    function drawBackground(ctx, outW, outH) {
+      if (currentBg.type === 'gradient') {
+        const grad = ctx.createLinearGradient(0, 0, 0, outH);
+        grad.addColorStop(0, currentBg.colors[0]);
+        grad.addColorStop(1, currentBg.colors[1]);
+        ctx.fillStyle = grad;
+      } else {
+        ctx.fillStyle = currentBg.colors[0];
+      }
+      ctx.fillRect(0, 0, outW, outH);
+    }
+
+    function renderComposite(canvas, outW, outH) {
+      canvas.width = outW;
+      canvas.height = outH;
+      const ctx = canvas.getContext('2d');
+
+      drawBackground(ctx, outW, outH);
+
+      if (!sourceImage || frameW <= 0) return ctx;
+
+      const k = outW / frameW;
+      const naturalW = sourceImage.naturalWidth;
+      const naturalH = sourceImage.naturalHeight;
+      const dWidth = naturalW * scale * k;
+      const dHeight = naturalH * scale * k;
+      const dx = outW / 2 + offsetX * k - dWidth / 2;
+      const dy = outH / 2 + offsetY * k - dHeight / 2;
+
+      ctx.drawImage(sourceImage, dx, dy, dWidth, dHeight);
+
+      const clipX = Math.max(0, Math.floor(dx));
+      const clipY = Math.max(0, Math.floor(dy));
+      const clipRight = Math.min(outW, Math.ceil(dx + dWidth));
+      const clipBottom = Math.min(outH, Math.ceil(dy + dHeight));
+      const clipW = Math.max(0, clipRight - clipX);
+      const clipH = Math.max(0, clipBottom - clipY);
+
+      if (clipW > 0 && clipH > 0) {
+        const imageData = ctx.getImageData(clipX, clipY, clipW, clipH);
+
+        if (replaceBgEnabled) {
+          replaceBackgroundInPlace(imageData, intensityPct, opacityPct);
+        }
+        applyEnhanceFilter(imageData, currentEnhance.id);
+        applyBeautyFilter(imageData, currentBeauty.id);
+
+        ctx.putImageData(imageData, clipX, clipY);
+
+        if (currentBeauty.id === 'smooth') {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(clipX, clipY, clipW, clipH);
+          ctx.clip();
+          ctx.filter = 'blur(3px)';
+          ctx.globalAlpha = 0.4;
+          ctx.drawImage(sourceImage, dx, dy, dWidth, dHeight);
+          ctx.globalAlpha = 1;
+          ctx.filter = 'none';
+          ctx.restore();
+        }
+      }
+
+      return ctx;
+    }
+
+    let previewScheduled = false;
+    function scheduleLivePreview() {
+      if (previewScheduled) return;
+      previewScheduled = true;
+      requestAnimationFrame(() => {
+        previewScheduled = false;
+        updateLivePreview();
+      });
+    }
+
+    function updateLivePreview() {
+      if (!sourceImage) return;
+      const { w, h } = getOutputSize();
+      const maxDim = 220;
+      let previewW, previewH;
+      if (w >= h) {
+        previewW = maxDim;
+        previewH = Math.max(1, Math.round((maxDim * h) / w));
+      } else {
+        previewH = maxDim;
+        previewW = Math.max(1, Math.round((maxDim * w) / h));
+      }
+      try {
+        renderComposite(previewCanvas, previewW, previewH);
+      } catch (err) {
+        // live preview is best-effort; a failure here should not block the workspace
+      }
+    }
+
+    // ---- file handling ----
+    function resetWorkspace() {
+      workspace.classList.add('hidden');
+      dropZone.classList.remove('hidden');
+      fileInput.value = '';
+      if (originalObjectUrl) URL.revokeObjectURL(originalObjectUrl);
+      originalFile = null;
+      originalObjectUrl = null;
+      sourceImage = null;
+      cropImg.removeAttribute('src');
+    }
+
+    function handleFile(file) {
+      clearError();
+      if (!file || !file.type.startsWith('image/')) {
+        showError('Please choose an image file (JPG, PNG, or WebP).');
+        return;
+      }
+
+      originalFile = file;
+      if (originalObjectUrl) URL.revokeObjectURL(originalObjectUrl);
+      originalObjectUrl = URL.createObjectURL(file);
+
+      const img = new Image();
+      img.onload = () => {
+        sourceImage = img;
+        cropImg.src = originalObjectUrl;
+        fileNameEl.textContent = file.name;
+        dropZone.classList.add('hidden');
+        workspace.classList.remove('hidden');
+
+        applyPresetAspect();
+        updateOutputLabel();
+        zoomSlider.value = 100;
+        zoomValue.textContent = '100%';
+
+        requestAnimationFrame(() => recomputeFrameMetrics(true));
+      };
+      img.onerror = () => showError('This image could not be read. Try a different file.');
+      img.src = originalObjectUrl;
+    }
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) handleFile(e.target.files[0]);
+    });
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+    });
+    ['dragenter', 'dragover'].forEach((evt) => {
+      dropZone.addEventListener(evt, (e) => { e.preventDefault(); dropZone.classList.add('drag-active'); });
+    });
+    ['dragleave', 'drop'].forEach((evt) => {
+      dropZone.addEventListener(evt, (e) => { e.preventDefault(); dropZone.classList.remove('drag-active'); });
+    });
+    dropZone.addEventListener('drop', (e) => {
+      const file = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) handleFile(file);
+    });
+
+    changeBtn.addEventListener('click', resetWorkspace);
+
+    // ---- export ----
+    downloadBtn.addEventListener('click', () => {
+      if (!sourceImage) return;
+
+      downloadBtn.disabled = true;
+      downloadIcon.classList.add('hidden');
+      downloadSpinner.classList.remove('hidden');
+      downloadLabel.textContent = 'Preparing your photo…';
+
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          try {
+            const { w: outW, h: outH } = getOutputSize();
+            const canvas = document.createElement('canvas');
+            renderComposite(canvas, outW, outH);
+
+            canvas.toBlob((blob) => {
+              downloadBtn.disabled = false;
+              downloadIcon.classList.remove('hidden');
+              downloadSpinner.classList.add('hidden');
+              downloadLabel.textContent = 'Download passport photo';
+
+              if (!blob) {
+                showError('Export failed. Try a different image or browser.');
+                return;
+              }
+              const url = URL.createObjectURL(blob);
+              const base = originalFile ? originalFile.name.replace(/\.[^/.]+$/, '') : 'photo';
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = base + '-passport-' + currentPreset.id + '.jpg';
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              setTimeout(() => URL.revokeObjectURL(url), 1000);
+            }, 'image/jpeg', 0.95);
+          } catch (err) {
+            downloadBtn.disabled = false;
+            downloadIcon.classList.remove('hidden');
+            downloadSpinner.classList.add('hidden');
+            downloadLabel.textContent = 'Download passport photo';
+            showError('Export failed. Try a different image or browser.');
+          }
+        }, 0);
+      });
+    });
+
+    // initialize static state before any image is loaded
+    cropFrame.style.background = backgroundCssValue(currentBg);
+    applyPresetAspect();
+    updateOutputLabel();
+  </script>
+
+</body>
+</html>
