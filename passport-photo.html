@@ -318,6 +318,7 @@
 
   <script>
     const DPI = 300;
+    const MAX_IMAGE_DIMENSION = 1200;
 
     const PRESETS = [
       { id: 'us2x2', label: 'US · 2 × 2 in', widthIn: 2, heightIn: 2 },
@@ -762,24 +763,36 @@
       return [r / n, g / n, b / n];
     }
 
+    // Precise isolation logic preventing clothes and subject color bleed
     function replaceBackgroundInPlace(imageData, tolerancePct, strengthPct) {
       const data = imageData.data;
       const width = imageData.width, height = imageData.height;
       const [br, bgc, bb] = estimateBackgroundColor(data, width, height);
-      const tolerance = Math.max(1, (tolerancePct / 100) * 260);
+      
+      const maxDist = (tolerancePct / 100) * 120;
+      const featherWidth = 15;
       const strength = strengthPct / 100;
+
       for (let y = 0; y < height; y++) {
         const ny = height > 1 ? y / (height - 1) : 0;
         const target = bgColorAt(ny);
         const tr = target[0], tg = target[1], tb = target[2];
+
         for (let x = 0; x < width; x++) {
           const i = (y * width + x) * 4;
           const r = data[i], g = data[i + 1], b = data[i + 2];
+
+          // Compute Euclidean color distance in RGB space
           const dr = r - br, dg = g - bgc, db = b - bb;
           const dist = Math.sqrt(dr * dr + dg * dg + db * db);
-          if (dist < tolerance) {
-            const t = 1 - dist / tolerance;
-            const alpha = t * strength;
+
+          if (dist < maxDist) {
+            let alpha = 1.0;
+            if (dist > (maxDist - featherWidth)) {
+              alpha = (maxDist - dist) / featherWidth;
+            }
+            alpha *= strength;
+
             data[i] = r + (tr - r) * alpha;
             data[i + 1] = g + (tg - g) * alpha;
             data[i + 2] = b + (tb - b) * alpha;
@@ -884,6 +897,36 @@
       }
     }
 
+    // Downscale large uploaded photos to prevent mobile memory crashes
+    function downscaleImageIfNeeded(img, maxDim, callback) {
+      if (img.width <= maxDim && img.height <= maxDim) {
+        callback(img, false);
+        return;
+      }
+
+      let targetW = img.width;
+      let targetH = img.height;
+
+      if (targetW > targetH) {
+        targetH = Math.round((targetH * maxDim) / targetW);
+        targetW = maxDim;
+      } else {
+        targetW = Math.round((targetW * maxDim) / targetH);
+        targetH = maxDim;
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = targetW;
+      canvas.height = targetH;
+
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, targetW, targetH);
+
+      const scaledImg = new Image();
+      scaledImg.onload = () => callback(scaledImg, true);
+      scaledImg.src = canvas.toDataURL('image/jpeg', 0.92);
+    }
+
     // ---- file handling ----
     function resetWorkspace() {
       workspace.classList.add('hidden');
@@ -907,23 +950,25 @@
       if (originalObjectUrl) URL.revokeObjectURL(originalObjectUrl);
       originalObjectUrl = URL.createObjectURL(file);
 
-      const img = new Image();
-      img.onload = () => {
-        sourceImage = img;
-        cropImg.src = originalObjectUrl;
-        fileNameEl.textContent = file.name;
-        dropZone.classList.add('hidden');
-        workspace.classList.remove('hidden');
+      const rawImg = new Image();
+      rawImg.onload = () => {
+        downscaleImageIfNeeded(rawImg, MAX_IMAGE_DIMENSION, (processedImg, wasScaled) => {
+          sourceImage = processedImg;
+          cropImg.src = processedImg.src;
+          fileNameEl.textContent = file.name;
+          dropZone.classList.add('hidden');
+          workspace.classList.remove('hidden');
 
-        applyPresetAspect();
-        updateOutputLabel();
-        zoomSlider.value = 100;
-        zoomValue.textContent = '100%';
+          applyPresetAspect();
+          updateOutputLabel();
+          zoomSlider.value = 100;
+          zoomValue.textContent = '100%';
 
-        requestAnimationFrame(() => recomputeFrameMetrics(true));
+          requestAnimationFrame(() => recomputeFrameMetrics(true));
+        });
       };
-      img.onerror = () => showError('This image could not be read. Try a different file.');
-      img.src = originalObjectUrl;
+      rawImg.onerror = () => showError('This image could not be read. Try a different file.');
+      rawImg.src = originalObjectUrl;
     }
 
     fileInput.addEventListener('change', (e) => {
