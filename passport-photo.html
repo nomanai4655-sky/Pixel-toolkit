@@ -31,6 +31,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
 
+<!-- AI Background Removal Library -->
+<script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/dist/imgly-background-removal.min.js"></script>
+
 <style>
   body { font-family: 'Inter', sans-serif; }
   .font-display { font-family: 'Space Grotesk', sans-serif; }
@@ -123,7 +126,7 @@
         <span class="w-3 h-3 rounded-full bg-brand-blue"></span>
         <span class="font-display font-semibold text-lg tracking-tight">Passport Photo Generator</span>
       </div>
-      <span class="text-xs bg-brand-blue/10 text-brand-blue px-3 py-1 rounded-full font-medium">100% Auto-Fit</span>
+      <span class="text-xs bg-brand-blue/10 text-brand-blue px-3 py-1 rounded-full font-medium">100% AI Auto-Cut</span>
     </nav>
   </header>
 
@@ -131,7 +134,13 @@
 
     <div class="text-center max-w-xl mx-auto mb-8">
       <h1 class="font-display font-bold text-2xl sm:text-3xl tracking-tight">Instant Passport Photo Maker</h1>
-      <p class="mt-2 text-muted text-sm">Image upload karein, size aur background color choose karein. Smooth auto-fit photo ready ho jaye gi.</p>
+      <p class="mt-2 text-muted text-sm">Image upload karein, AI background remove karke photo ready kar dega.</p>
+    </div>
+
+    <!-- Status Message -->
+    <div id="status-box" class="hidden text-sm bg-blue-50 border border-blue-200 text-blue-700 rounded-lg px-4 py-3 mb-6 flex items-center gap-3">
+      <span class="spinner text-blue-600"></span>
+      <span id="status-text">AI image ka background remove kar raha hai... Please wait.</span>
     </div>
 
     <p id="error-msg" class="hidden text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-4 py-3 mb-6"></p>
@@ -146,7 +155,7 @@
         <svg class="w-6 h-6 text-brand-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
       </div>
       <p class="mt-4 font-semibold text-base">Photo yahan upload karein</p>
-      <p class="mt-1 text-xs text-muted">Aapki photo automatic fit aur crop ho jaye gi</p>
+      <p class="mt-1 text-xs text-muted">Aapki photo automatic cut aur fit ho jaye gi</p>
       <input id="file-input" type="file" accept="image/*" class="hidden" />
     </div>
 
@@ -160,9 +169,8 @@
 
       <div class="grid md:grid-cols-2 gap-6">
 
-        <!-- OPTIONS (SIZE & COLOR ONLY) -->
+        <!-- OPTIONS -->
         <div class="space-y-5">
-          
           <!-- Size Preset -->
           <div class="rounded-xl border border-line bg-white p-5">
             <p class="text-xs font-semibold uppercase tracking-wider text-muted mb-3">1. Select Passport Size</p>
@@ -175,13 +183,12 @@
             <p class="text-xs font-semibold uppercase tracking-wider text-muted mb-3">2. Select Background Color</p>
             <div id="bg-group" class="flex flex-wrap items-center gap-3"></div>
           </div>
-
         </div>
 
         <!-- PREVIEW BOX -->
         <div class="space-y-4">
           <div class="rounded-xl border border-line bg-white p-5 flex flex-col items-center justify-center">
-            <p class="w-full text-xs font-semibold uppercase tracking-wider text-muted mb-3">Position Adjust (Drag To Fine Tune)</p>
+            <p class="w-full text-xs font-semibold uppercase tracking-wider text-muted mb-3">Position Adjust (Drag To Move)</p>
             <div id="crop-frame" class="w-[220px]">
               <img id="crop-img" alt="Photo to crop" draggable="false" />
               <svg id="guide-overlay" viewBox="0 0 100 100" preserveAspectRatio="none">
@@ -204,7 +211,6 @@
         class="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-brand-blue text-white text-base font-semibold px-6 py-4 hover:bg-ink transition-colors focus-ring"
       >
         <svg id="download-icon" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12"/><path d="M7 11l5 5 5-5"/><path d="M4 20h16"/></svg>
-        <span id="download-spinner" class="hidden spinner"></span>
         <span id="download-label">Download Ready Passport Photo</span>
       </button>
 
@@ -234,6 +240,8 @@
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
     const workspace = document.getElementById('workspace');
+    const statusBox = document.getElementById('status-box');
+    const statusText = document.getElementById('status-text');
     const errorMsg = document.getElementById('error-msg');
     const fileNameEl = document.getElementById('file-name');
     const changeBtn = document.getElementById('change-btn');
@@ -248,7 +256,6 @@
     const downloadBtn = document.getElementById('download-btn');
 
     let sourceImage = null;
-    let originalFile = null;
     let originalObjectUrl = null;
 
     let currentPreset = PRESETS[0];
@@ -267,7 +274,6 @@
       errorMsg.textContent = '';
     }
 
-    // Build Size Presets
     PRESETS.forEach(preset => {
       const btn = document.createElement('button');
       btn.textContent = preset.label;
@@ -283,7 +289,6 @@
       presetGroup.appendChild(btn);
     });
 
-    // Build Color Swatches
     BG_OPTIONS.forEach(bg => {
       const btn = document.createElement('button');
       btn.className = 'swatch focus-ring ' + (bg.id === currentBg.id ? 'active' : '');
@@ -317,7 +322,6 @@
       outputDims.textContent = currentPreset.label + ' (' + w + ' × ' + h + ' px)';
     }
 
-    // Fully Automated Face Fitting Algorithm
     function autoFitImage() {
       if (!sourceImage) return;
 
@@ -329,10 +333,10 @@
       const nh = sourceImage.naturalHeight;
 
       const coverScale = Math.max(frameW / nw, frameH / nh);
-      scale = coverScale * 1.15; // Optimal passport face framing zoom
+      scale = coverScale * 1.15;
 
       offsetX = 0;
-      offsetY = (frameH - (nh * scale)) * 0.06; // Automatic head positioning
+      offsetY = (frameH - (nh * scale)) * 0.06;
 
       clampOffsets();
       applyTransform();
@@ -354,7 +358,6 @@
       scheduleLivePreview();
     }
 
-    // Pointer/Drag for slight position adjustment
     let dragging = false, dragX = 0, dragY = 0, startOX = 0, startOY = 0;
     cropFrame.addEventListener('pointerdown', (e) => {
       if (!sourceImage) return;
@@ -375,40 +378,45 @@
     cropFrame.addEventListener('pointerup', stopDrag);
     cropFrame.addEventListener('pointercancel', stopDrag);
 
-    // Advanced Smooth Background Cleaning
-    function hexToRgb(hex) {
-      const c = hex.replace('#', '');
-      return [parseInt(c.substring(0, 2), 16), parseInt(c.substring(2, 4), 16), parseInt(c.substring(4, 6), 16)];
-    }
+    // AI Handle File
+    async function handleFile(file) {
+      clearError();
+      if (!file || !file.type.startsWith('image/')) {
+        showError('Please upload a valid image.');
+        return;
+      }
 
-    function smoothCleanBackground(imageData, targetHex) {
-      const data = imageData.data;
-      const [tr, tg, tb] = hexToRgb(targetHex);
+      statusBox.classList.remove('hidden');
+      dropZone.classList.add('hidden');
 
-      // Corner sampling for background color
-      const sampleR = (data[0] + data[(imageData.width - 1) * 4]) / 2;
-      const sampleG = (data[1] + data[(imageData.width - 1) * 4 + 1]) / 2;
-      const sampleB = (data[2] + data[(imageData.width - 1) * 4 + 2]) / 2;
+      try {
+        // Run AI Model to remove background
+        const cleanBlob = await imglyRemoveBackground(file);
+        
+        if (originalObjectUrl) URL.revokeObjectURL(originalObjectUrl);
+        originalObjectUrl = URL.createObjectURL(cleanBlob);
 
-      const threshold = 65;
-      const feather = 20;
+        const img = new Image();
+        img.onload = () => {
+          sourceImage = img;
+          cropImg.src = img.src;
+          fileNameEl.textContent = file.name;
+          
+          statusBox.classList.add('hidden');
+          workspace.classList.remove('hidden');
 
-      for (let i = 0; i < data.length; i += 4) {
-        const dist = Math.sqrt(
-          Math.pow(data[i] - sampleR, 2) +
-          Math.pow(data[i+1] - sampleG, 2) +
-          Math.pow(data[i+2] - sampleB, 2)
-        );
-
-        if (dist < threshold) {
-          let alpha = 1.0;
-          if (dist > threshold - feather) {
-            alpha = (threshold - dist) / feather;
-          }
-          data[i] = Math.round(data[i] * (1 - alpha) + tr * alpha);
-          data[i+1] = Math.round(data[i+1] * (1 - alpha) + tg * alpha);
-          data[i+2] = Math.round(data[i+2] * (1 - alpha) + tb * alpha);
-        }
+          applyPresetAspect();
+          updateOutputLabel();
+          
+          requestAnimationFrame(() => {
+            autoFitImage();
+          });
+        };
+        img.src = originalObjectUrl;
+      } catch (err) {
+        statusBox.classList.add('hidden');
+        dropZone.classList.remove('hidden');
+        showError('AI Background removal failed. Please try another image.');
       }
     }
 
@@ -429,11 +437,6 @@
       const dy = outH / 2 + offsetY * k - dH / 2;
 
       ctx.drawImage(sourceImage, dx, dy, dW, dH);
-      const imgData = ctx.getImageData(0, 0, outW, outH);
-
-      smoothCleanBackground(imgData, currentBg.color);
-
-      ctx.putImageData(imgData, 0, 0);
       return ctx;
     }
 
@@ -450,34 +453,6 @@
         const ph = h > w ? max : Math.round((max * h) / w);
         renderComposite(previewCanvas, pw, ph);
       });
-    }
-
-    function handleFile(file) {
-      clearError();
-      if (!file || !file.type.startsWith('image/')) {
-        showError('Please upload a valid JPG or PNG photo.');
-        return;
-      }
-      originalFile = file;
-      if (originalObjectUrl) URL.revokeObjectURL(originalObjectUrl);
-      originalObjectUrl = URL.createObjectURL(file);
-
-      const img = new Image();
-      img.onload = () => {
-        sourceImage = img;
-        cropImg.src = img.src;
-        fileNameEl.textContent = file.name;
-        dropZone.classList.add('hidden');
-        workspace.classList.remove('hidden');
-
-        applyPresetAspect();
-        updateOutputLabel();
-        
-        requestAnimationFrame(() => {
-          autoFitImage();
-        });
-      };
-      img.src = originalObjectUrl;
     }
 
     fileInput.addEventListener('change', (e) => e.target.files[0] && handleFile(e.target.files[0]));
