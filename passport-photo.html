@@ -31,7 +31,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
 
-<!-- Google MediaPipe AI Engine for Instant Background Removal -->
+<!-- Google MediaPipe AI Engine -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js" crossorigin="anonymous"></script>
 
@@ -121,7 +121,6 @@
 
 <body class="bg-paper text-ink antialiased min-h-screen">
 
-  <!-- HEADER -->
   <header class="bg-white border-b border-line">
     <nav class="max-w-4xl mx-auto px-5 h-16 flex items-center justify-between">
       <div class="flex items-center gap-2">
@@ -139,7 +138,6 @@
       <p class="mt-2 text-muted text-sm">Upload any photo. Our AI automatically removes the background and fits it to official passport standards.</p>
     </div>
 
-    <!-- Processing Status -->
     <div id="status-box" class="hidden text-sm bg-blue-50 border border-blue-200 text-blue-700 rounded-lg px-4 py-3 mb-6 flex items-center gap-3">
       <span class="spinner !border-blue-600 !border-t-transparent"></span>
       <span id="status-text">Removing background with AI... Please wait.</span>
@@ -147,7 +145,6 @@
 
     <p id="error-msg" class="hidden text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-4 py-3 mb-6"></p>
 
-    <!-- UPLOAD ZONE -->
     <div
       id="drop-zone"
       tabindex="0"
@@ -161,7 +158,6 @@
       <input id="file-input" type="file" accept="image/*" class="hidden" />
     </div>
 
-    <!-- WORKSPACE -->
     <div id="workspace" class="hidden mt-6 space-y-6">
 
       <div class="flex items-center justify-between border-b border-line pb-4">
@@ -171,23 +167,19 @@
 
       <div class="grid md:grid-cols-2 gap-6">
 
-        <!-- CONTROLS PANEL -->
         <div class="space-y-5">
-          <!-- Preset Sizes -->
           <div class="rounded-xl border border-line bg-white p-5">
             <p class="text-xs font-semibold uppercase tracking-wider text-muted mb-3">1. Select Preset Size</p>
             <div id="preset-group" class="flex flex-wrap gap-2"></div>
             <p id="size-note" class="mt-3 text-xs text-muted"></p>
           </div>
 
-          <!-- Background Color Selection -->
           <div class="rounded-xl border border-line bg-white p-5">
             <p class="text-xs font-semibold uppercase tracking-wider text-muted mb-3">2. Select Background Color</p>
             <div id="bg-group" class="flex flex-wrap items-center gap-3"></div>
           </div>
         </div>
 
-        <!-- PREVIEW & ADJUST -->
         <div class="space-y-4">
           <div class="rounded-xl border border-line bg-white p-5 flex flex-col items-center justify-center">
             <p class="w-full text-xs font-semibold uppercase tracking-wider text-muted mb-3">Positioning (Drag To Adjust)</p>
@@ -208,7 +200,6 @@
 
       </div>
 
-      <!-- DOWNLOAD BUTTON -->
       <button
         id="download-btn"
         class="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-brand-blue text-white text-base font-semibold px-6 py-4 hover:bg-ink transition-colors focus-ring"
@@ -274,7 +265,6 @@
       errorMsg.textContent = '';
     }
 
-    // Initialize Presets
     PRESETS.forEach(preset => {
       const btn = document.createElement('button');
       btn.textContent = preset.label;
@@ -290,7 +280,6 @@
       presetGroup.appendChild(btn);
     });
 
-    // Initialize Colors
     BG_OPTIONS.forEach(bg => {
       const btn = document.createElement('button');
       btn.className = 'swatch focus-ring ' + (bg.id === currentBg.id ? 'active' : '');
@@ -360,7 +349,6 @@
       scheduleLivePreview();
     }
 
-    // Drag Functionality
     let dragging = false, dragX = 0, dragY = 0, startOX = 0, startOY = 0;
     cropFrame.addEventListener('pointerdown', (e) => {
       if (!processedCutoutImage) return;
@@ -381,27 +369,50 @@
     cropFrame.addEventListener('pointerup', stopDrag);
     cropFrame.addEventListener('pointercancel', stopDrag);
 
-    // Initialize MediaPipe AI Segmentation
     const selfieSegmentation = new SelfieSegmentation({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
     });
 
     selfieSegmentation.setOptions({
-      modelSelection: 1, // High performance portrait model
+      modelSelection: 1,
     });
 
+    // UPDATED SMOOTH EDGE PROCESSOR
     async function processImageAI(imageElement) {
       return new Promise((resolve) => {
         selfieSegmentation.onResults((results) => {
+          const w = results.image.width;
+          const h = results.image.height;
+
           const canvas = document.createElement('canvas');
-          canvas.width = results.image.width;
-          canvas.height = results.image.height;
+          canvas.width = w;
+          canvas.height = h;
           const ctx = canvas.getContext('2d');
 
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(results.segmentationMask, 0, 0, canvas.width, canvas.height);
+          // Draw Segmentation Mask
+          ctx.drawImage(results.segmentationMask, 0, 0, w, h);
+
+          // Feather edges to eliminate sharp jagged steps
+          ctx.filter = 'blur(2px)';
           ctx.globalCompositeOperation = 'source-in';
-          ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+          ctx.drawImage(results.segmentationMask, 0, 0, w, h);
+          ctx.filter = 'none';
+
+          // Extract Person Image
+          ctx.globalCompositeOperation = 'source-in';
+          ctx.drawImage(results.image, 0, 0, w, h);
+
+          // Alpha threshold to remove remaining edge noise
+          const imgData = ctx.getImageData(0, 0, w, h);
+          const data = imgData.data;
+          for (let i = 0; i < data.length; i += 4) {
+            if (data[i + 3] < 110) {
+              data[i + 3] = 0;
+            } else if (data[i + 3] < 230) {
+              data[i + 3] = Math.round(data[i + 3] * 0.7);
+            }
+          }
+          ctx.putImageData(imgData, 0, 0);
 
           const transparentImg = new Image();
           transparentImg.onload = () => resolve(transparentImg);
