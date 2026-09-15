@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
@@ -12,19 +12,6 @@
     theme: {
       extend: {
         colors: {
-          paper: '#F5F6F3',
-          ink: '#15161A',
-          muted: '#6B6F76',
-          line: '#E2E3DE',
-          brand: { blue: '#3358FF' },
-        },
-        fontFamily: {
-          display: ['"Space Grotesk"', 'sans-serif'],
-          sans: ['Inter', 'sans-serif'],
-        },
-      },
-    },
-  };
 </script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
